@@ -277,20 +277,25 @@ def find_best_move(board, max_depth=4, time_limit=3.0):
 # ============================================================
 # 8. UCI 协议层
 # ============================================================
-def parse_position(tokens):
+def parse_position(tokens, chess960=False):
     if len(tokens) < 2:
-        return chess.Board()
+        return chess.Board(chess960=chess960)
     if tokens[1] == "startpos":
-        board = chess.Board()
+        board = chess.Board(chess960=chess960)
         i = 2
     elif tokens[1] == "fen":
         parts, i = [], 2
         while i < len(tokens) and tokens[i] != "moves":
             parts.append(tokens[i])
             i += 1
-        board = chess.Board(" ".join(parts))
+        fen = " ".join(parts)
+        # 兼容个别 GUI 在 FEN 后附加的 "chess960" 标记
+        if fen.endswith(" chess960"):
+            fen = fen[:-len(" chess960")]
+            chess960 = True
+        board = chess.Board(fen, chess960=chess960)
     else:
-        return chess.Board()
+        return chess.Board(chess960=chess960)
 
     if i < len(tokens) and tokens[i] == "moves":
         for mv in tokens[i+1:]:
@@ -299,6 +304,7 @@ def parse_position(tokens):
             except ValueError:
                 break
     return board
+
 
 def parse_go(tokens):
     max_depth = 4
@@ -325,6 +331,7 @@ def parse_go(tokens):
 
 def uci_loop():
     board = chess.Board()
+    chess960 = False
     default_depth = 4   # ← 想要更强就改这行
 
     while True:
@@ -342,19 +349,24 @@ def uci_loop():
                 print("id name MyPythonAI")
                 print("id author You")
                 print(f"option name Depth type spin default {default_depth} min 1 max 6")
+                print("option name UCI_Chess960 type check default false")
                 print("uciok")
             elif cmd == "isready":
                 print("readyok")
             elif cmd == "setoption":
                 try:
-                    idx = tokens.index("value")
-                    default_depth = int(tokens[idx + 1])
+                    if len(tokens) > 1 and tokens[1] == "UCI_Chess960":
+                        idx = tokens.index("value")
+                        chess960 = (tokens[idx + 1] == "true")
+                    else:
+                        idx = tokens.index("value")
+                        default_depth = int(tokens[idx + 1])
                 except (ValueError, IndexError):
                     pass
             elif cmd == "ucinewgame":
-                board = chess.Board()
+                board = chess.Board(chess960=chess960)
             elif cmd == "position":
-                board = parse_position(tokens)
+                board = parse_position(tokens, chess960)
             elif cmd == "go":
                 d, t = parse_go(tokens)
                 if "depth" not in tokens:
@@ -371,6 +383,7 @@ def uci_loop():
                 print(f"bestmove {legal[0].uci() if legal else '0000'}")
 
         sys.stdout.flush()
+
 
 if __name__ == "__main__":
     uci_loop()
